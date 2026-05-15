@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="https://cdn.plot.ly/plotly-latest.min.js">
+
+
+
+// ================= STEP 2 + STEP 3 =================
+
+const RED = "#ff0000";
+
+const phase1Nodes = [
+  "Technologies",
+  "Cultural and Linguistic Diversity",
+  "Translation"
+];
+
+const phase2Targets = [
+  "Translator",
+  "Education",
+  "Communication"
+];
+
+const phase3Targets = [
+  "Technological Competence",
+  "Competence in Culture and Language"
+];
+
+let scenarioStartTime = null;
+let lockedColors = null;
+let lockedSizes = null;
+
+function lerpColor(a,b,t){
+  const ah=parseInt(a.replace("#",""),16),
+  ar=ah>>16,ag=ah>>8&0xff,ab=ah&0xff,
+  bh=parseInt(b.replace("#",""),16),
+  br=bh>>16,bg=bh>>8&0xff,bb=bh&0xff,
+  rr=ar+t*(br-ar),
+  rg=ag+t*(bg-ag),
+  rb=ab+t*(bb-ab);
+  return "#" + (((1<<24)+(rr<<16)+(rg<<8)+rb)|0).toString(16).slice(1);
+}
+
+function startScenario(){
+  requestAnimationFrame(runScenario);
+}
+
+function runScenario(ts){
+  if(!scenarioStartTime) scenarioStartTime = ts;
+  const t = (ts - scenarioStartTime)/1000;
+
+  let colors = lockedColors ? [...lockedColors] : nodes.map(n=>n.color);
+  let sizes  = lockedSizes  ? [...lockedSizes]  : nodes.map(()=>8);
+
+  // ---- STEP 2 ----
+  // 0–3s first nodes
+  if(t < 3){
+    const p = t/3;
+    nodes.forEach((n,i)=>{
+      if(phase1Nodes.includes(n.id)){
+        colors[i] = lerpColor(n.color, RED, p);
+        sizes[i] = 8 + 8*p;
+      }
+    });
+  }
+
+  // 3–10s lines + translator layer
+  if(t >= 3 && t < 10){
+    const p = (t-3)/7;
+
+    nodes.forEach((n,i)=>{
+      if(phase1Nodes.includes(n.id)){
+        colors[i] = RED;
+        sizes[i] = 16;
+      }
+      if(phase2Targets.includes(n.id)){
+        colors[i] = lerpColor(n.color, RED, p);
+        sizes[i] = 8 + 8*p;
+      }
+    });
+
+    edges.forEach((e,i)=>{
+      const [a,b] = e;
+      if(
+        (phase1Nodes.includes(a) && phase2Targets.includes(b)) ||
+        (phase1Nodes.includes(b) && phase2Targets.includes(a))
+      ){
+        const c = lerpColor("#cccccc", RED, p);
+        const w = 0.5 + p;
+        Plotly.restyle("plot",
+          {"line.color":c,"line.width":w},
+          i + layerPlanes.length
+        );
+      }
+    });
+  }
+
+  // ---- STEP 3 ----
+  // 10–13s translator layer doubles again
+  if(t >= 10 && t < 13){
+    const p = (t-10)/3;
+    nodes.forEach((n,i)=>{
+      if(phase2Targets.includes(n.id)){
+        colors[i] = RED;
+        sizes[i] = 16;
+      }
+    });
+  }
+
+  // 13–18s lines to competence layer
+  if(t >= 13 && t < 18){
+    const p = (t-13)/5;
+
+    edges.forEach((e,i)=>{
+      const [a,b] = e;
+      if(
+        (phase2Targets.includes(a) && phase3Targets.includes(b)) ||
+        (phase2Targets.includes(b) && phase3Targets.includes(a))
+      ){
+        const c = lerpColor("#cccccc", RED, p);
+        const w = 0.5 + p;
+        Plotly.restyle("plot",
+          {"line.color":c,"line.width":w},
+          i + layerPlanes.length
+        );
+      }
+    });
+  }
+
+  // 18–21s competence nodes activate
+  if(t >= 18 && t < 21){
+    const p = (t-18)/3;
+    nodes.forEach((n,i)=>{
+      if(phase3Targets.includes(n.id)){
+        colors[i] = lerpColor(n.color, RED, p);
+        sizes[i] = 8 + 8*p;
+      }
+    });
+  }
+
+
+  // ---- STEP 4 (21–31s) ----
+  // 21–26s: lines from ALL activated nodes to Ethics turn red
+  if(t >= 21 && t < 26){
+    const p = (t-21)/5;
+
+    const ethicsNode = "Ethics";
+
+    const activeSources = [
+      "Technologies",
+      "Cultural and Linguistic Diversity",
+      "Translation",
+      "Translator",
+      "Education",
+      "Communication",
+      "Technological Competence",
+      "Competence in Culture and Language"
+    ];
+
+    edges.forEach((e,i)=>{
+      const [a,b] = e;
+
+      if(
+        (activeSources.includes(a) && b === ethicsNode) ||
+        (activeSources.includes(b) && a === ethicsNode)
+      ){
+        const c = lerpColor("#cccccc", RED, p);
+        const w = 0.5 + p;
+        Plotly.restyle("plot",
+          {"line.color":c,"line.width":w},
+          i + layerPlanes.length
+        );
+      }
+    });
+  }
+
+  // 26–31s: Ethics node turns red and grows x3
+  if(t >= 26 && t < 31){
+    const p = (t-26)/5;
+    nodes.forEach((n,i)=>{
+      if(n.id === "Ethics"){
+        colors[i] = lerpColor(n.color, RED, p);
+        sizes[i] = 8 + 16*p; // 8 → 24 (triple size)
+      }
+    });
+  }
+
+  lockedColors = colors;
+  lockedSizes = sizes;
+
+  Plotly.restyle("plot",{
+    "marker.color":[colors],
+    "marker.size":[sizes]
+  }, layerPlanes.length + edgeTraces.length);
+
+  if(t < 31){
+    requestAnimationFrame(runScenario);
+  }
+}
+
+// start after freeze (11s)
+setTimeout(startScenario, 12000);
+
+
+
+
+
+
+// ================= STEP 5 (RESUME CONTINUOUS ROTATION) =================
+
+// reuse original theta and phi so rotation continues from freeze position
+
+setTimeout(() => {
+
+  const resumeInterval = setInterval(() => {
+    theta += 0.01;
+    phi += 0.02;
+
+    const R = 0.8;
+    const r = 0.4;
+
+    const camera = {
+      eye: {
+        x: (R + r * Math.cos(phi)) * Math.cos(theta),
+        y: (R + r * Math.cos(phi)) * Math.sin(theta),
+        z: r * Math.sin(phi) + 0.5
+      }
+    };
+
+    Plotly.relayout("plot", { "scene.camera": camera });
+  }, 50);
+
+}, 43000);
+
+
+// ===== YEAR COUNTER 2025 → 2050 =====
+const startYear = 2025;
+const endYear = 2050;
+const duration = 43000; // from file open until ethics growth start (~26s)
+const yearEl = document.getElementById("yearCounter");
+
+let yearStart = null;
+
+function updateYear(ts){
+  if(!yearStart) yearStart = ts;
+  const t = ts - yearStart;
+
+  if(t < duration){
+    const p = t/duration;
+    const year = Math.floor(startYear + (endYear-startYear)*p);
+    yearEl.textContent = year;
+    requestAnimationFrame(updateYear);
+  } else {
+    yearEl.textContent = endYear;
+  }
+}
+requestAnimationFrame(updateYear);
+
+</script>
+  <title>CAS Model - Updated with Human-in-the-loop (Torus Animation - Close View)</title>
+</head>
+<body>
+
+<style>
+#yearCounter{
+  position:absolute;
+  top:20px;
+  left:20px;
+  font-size:44px;
+  font-family:Arial, sans-serif;
+  color:#000000;
+  z-index:10;
+}
+</style>
+<div id="yearCounter">2025</div>
+
+  <div id="plot" style="width: 100%; height: 100vh;"></div>
+  <script>
+    const scale = 3;
+
+    const nodes = [
+      { id: "Translation", x: 0, y: 0, z: 0, color: '#1f77b4' },
+      { id: "Translator", x: 3, y: 0, z: 0, color: '#1f77b4' },
+      { id: "Translator's Work", x: 1.5, y: 2.6, z: 0, color: '#1f77b4' },
+      { id: "Technologies", x: 2, y: 0.5, z: 1, color: '#ff7f0e' },
+      { id: "Industry", x: 2, y: -0.5, z: 1, color: '#ff7f0e' },
+      { id: "Cultural and Linguistic Diversity", x: -1, y: 0.5, z: 1, color: '#2ca02c' },
+      { id: "Communication", x: 0, y: 2, z: 1, color: '#d62728' },
+      { id: "Education", x: 1, y: 2, z: 1, color: '#d62728' },
+      { id: "Economic Factors", x: 3.5, y: 0, z: 2, color: '#9467bd' },
+      { id: "Socio-political Factors", x: -2, y: 0, z: 2, color: '#8c564b' },
+
+      // Left vertical (competence) layer
+      { id: "Personal and Interpersonal Competence", x: -2, y: 0, z: 0.5, color: '#17becf' },
+      { id: "Competence in Culture and Language", x: -2, y: 1, z: 0.7, color: '#17becf' },
+      { id: "Service Provision Competence", x: -2, y: -1, z: 1, color: '#17becf' },
+      { id: "Technological Competence", x: -2, y: 1.5, z: 1.5, color: '#17becf' },
+      { id: "Translation Competence", x: -2, y: -1.5, z: 1.7, color: '#17becf' },
+      { id: "Personal Dispositions", x: -2, y: 0.5, z: 1.3, color: '#17becf' },
+      { id: "Other Competences", x: -2, y: -0.5, z: 0.2, color: '#17becf' },
+
+      // Right vertical layer
+      { id: "Risk", x: 6, y: 0, z: 0.5, color: '#bcbd22' },
+      { id: "Ethics", x: 6, y: 1, z: 0.7, color: '#bcbd22' },
+      { id: "Perception", x: 6, y: 0.5, z: 1.3, color: '#bcbd22' },
+      { id: "Human-in-the-loop", x: 6, y: -0.5, z: 1.5, color: '#bcbd22' }
+    ].map(n => ({
+      ...n,
+      x: n.x * scale,
+      y: n.y * scale,
+      z: n.z * scale
+    }));
+
+    const competenceIds = nodes.filter(n => n.color === '#17becf').map(n => n.id);
+    const riskLayerIds = nodes.filter(n => n.color === '#bcbd22').map(n => n.id);
+    const baseAgents = ["Translation", "Translator", "Translator's Work"];
+    const topAgents = ["Economic Factors", "Socio-political Factors"];
+    const human = "Human-in-the-loop";
+
+    const edges = [
+      ["Translation", "Translator"], ["Translation", "Translator's Work"], ["Translator", "Translator's Work"],
+      ["Technologies", "Industry"], ["Technologies", "Cultural and Linguistic Diversity"],
+      ["Industry", "Cultural and Linguistic Diversity"], ["Communication", "Technologies"],
+      ["Communication", "Industry"], ["Communication", "Cultural and Linguistic Diversity"],
+      ["Education", "Technologies"], ["Education", "Industry"], ["Education", "Cultural and Linguistic Diversity"],
+      ...["Technologies", "Industry", "Cultural and Linguistic Diversity", "Communication", "Education"].flatMap(n =>
+        baseAgents.map(t => [n, t])
+      ),
+      ["Economic Factors", "Socio-political Factors"],
+      ["Economic Factors", "Technologies"], ["Economic Factors", "Industry"],
+      ["Socio-political Factors", "Cultural and Linguistic Diversity"],
+
+      // Competence interconnections and links
+      ...competenceIds.flatMap(c1 => competenceIds.map(c2 => c1 !== c2 ? [c1, c2] : null)).filter(Boolean),
+      ...competenceIds.flatMap(c => baseAgents.map(t => [c, t])),
+
+      // Risk layer interconnections
+      ...riskLayerIds.flatMap(r1 => riskLayerIds.map(r2 => r1 !== r2 ? [r1, r2] : null)).filter(Boolean),
+      ...riskLayerIds.flatMap(r =>
+        [...topAgents, ...competenceIds, ...baseAgents].map(other => [r, other])
+      ),
+
+      // Human-in-the-loop connections
+      ...["Risk", "Ethics", "Perception", "Economic Factors", "Industry", "Technologies", ...baseAgents].map(a => [human, a])
+    ];
+
+    const edgeTraces = edges.map(([src, tgt]) => {
+      const from = nodes.find(n => n.id === src);
+      const to = nodes.find(n => n.id === tgt);
+      return {
+        type: "scatter3d",
+        mode: "lines",
+        x: [from.x, to.x],
+        y: [from.y, to.y],
+        z: [from.z, to.z],
+        line: { width: 0.5, color: "#ccc" },
+        hoverinfo: "none"
+      };
+    });
+
+    const nodeTrace = {
+      type: "scatter3d",
+      mode: "markers+text",
+      x: nodes.map(n => n.x),
+      y: nodes.map(n => n.y),
+      z: nodes.map(n => n.z),
+      marker: { size: 8, color: nodes.map(n => n.color) },
+      text: nodes.map(n => n.id),
+      textposition: "top center",
+      hoverinfo: "text"
+    };
+
+    function circularPlane(center, radius, resolution, axis, color) {
+      const theta = [...Array(resolution).keys()].map(i => (2 * Math.PI * i) / (resolution - 1));
+      const r = [...Array(resolution).keys()].map(i => (radius * i) / (resolution - 1));
+      const x = [], y = [], z = [];
+
+      for (let i = 0; i < r.length; i++) {
+        const rowX = [], rowY = [], rowZ = [];
+        for (let j = 0; j < theta.length; j++) {
+          const xi = r[i] * Math.cos(theta[j]);
+          const yi = r[i] * Math.sin(theta[j]);
+          if (axis === 'z') {
+            rowX.push(center[0] + xi);
+            rowY.push(center[1] + yi);
+            rowZ.push(center[2]);
+          } else if (axis === 'x') {
+            rowX.push(center[0]);
+            rowY.push(center[1] + xi);
+            rowZ.push(center[2] + yi);
+          }
+        }
+        x.push(rowX);
+        y.push(rowY);
+        z.push(rowZ);
+      }
+
+      return {
+        type: "surface",
+        x, y, z,
+        opacity: 0.08,
+        showscale: false,
+        colorscale: [[0, color], [1, color]],
+        hoverinfo: "none"
+      };
+    }
+
+    const layerPlanes = [
+      circularPlane([1.5 * scale, 1.3 * scale, 0], 4.5 * scale, 50, "z", "blue"),
+      circularPlane([1.5 * scale, 1.3 * scale, 3], 4.5 * scale, 50, "z", "orange"),
+      circularPlane([1.5 * scale, 1.3 * scale, 6], 4.5 * scale, 50, "z", "purple"),
+      circularPlane([-6 * scale, 3 * scale, 3], 2.5 * scale, 50, "x", "cyan"),
+      circularPlane([6 * scale, 3 * scale, 3], 2.5 * scale, 50, "x", "yellow")
+    ];
+
+    Plotly.newPlot("plot", [...layerPlanes, ...edgeTraces, nodeTrace], {
+      margin: { l: 0, r: 0, b: 0, t: 0 },
+      scene: {
+        xaxis: { visible: false },
+        yaxis: { visible: false },
+        zaxis: { visible: false }
+      }
+    });
+
+    
+    // 🔄 Torus-like animation loop - stops after 11 seconds
+    let theta = 0;
+    let phi = 0;
+
+    const rotationInterval = setInterval(() => {
+      theta += 0.01;
+      phi += 0.02;
+
+      const R = 0.8;
+      const r = 0.4;
+
+      const camera = {
+        eye: {
+          x: (R + r * Math.cos(phi)) * Math.cos(theta),
+          y: (R + r * Math.cos(phi)) * Math.sin(theta),
+          z: r * Math.sin(phi) + 0.5
+        }
+      };
+
+      Plotly.relayout("plot", { "scene.camera": camera });
+    }, 50);
+
+    setTimeout(() => {
+      clearInterval(rotationInterval);
+    }, 12000);
+
+
+  
+
+
+
+// ================= STEP 2 + STEP 3 =================
+
+const RED = "#ff0000";
+
+const phase1Nodes = [
+  "Technologies",
+  "Cultural and Linguistic Diversity",
+  "Translation"
+];
+
+const phase2Targets = [
+  "Translator",
+  "Education",
+  "Communication"
+];
+
+const phase3Targets = [
+  "Technological Competence",
+  "Competence in Culture and Language"
+];
+
+let scenarioStartTime = null;
+let lockedColors = null;
+let lockedSizes = null;
+
+function lerpColor(a,b,t){
+  const ah=parseInt(a.replace("#",""),16),
+  ar=ah>>16,ag=ah>>8&0xff,ab=ah&0xff,
+  bh=parseInt(b.replace("#",""),16),
+  br=bh>>16,bg=bh>>8&0xff,bb=bh&0xff,
+  rr=ar+t*(br-ar),
+  rg=ag+t*(bg-ag),
+  rb=ab+t*(bb-ab);
+  return "#" + (((1<<24)+(rr<<16)+(rg<<8)+rb)|0).toString(16).slice(1);
+}
+
+function startScenario(){
+  requestAnimationFrame(runScenario);
+}
+
+function runScenario(ts){
+  if(!scenarioStartTime) scenarioStartTime = ts;
+  const t = (ts - scenarioStartTime)/1000;
+
+  let colors = lockedColors ? [...lockedColors] : nodes.map(n=>n.color);
+  let sizes  = lockedSizes  ? [...lockedSizes]  : nodes.map(()=>8);
+
+  // ---- STEP 2 ----
+  // 0–3s first nodes
+  if(t < 3){
+    const p = t/3;
+    nodes.forEach((n,i)=>{
+      if(phase1Nodes.includes(n.id)){
+        colors[i] = lerpColor(n.color, RED, p);
+        sizes[i] = 8 + 8*p;
+      }
+    });
+  }
+
+  // 3–10s lines + translator layer
+  if(t >= 3 && t < 10){
+    const p = (t-3)/7;
+
+    nodes.forEach((n,i)=>{
+      if(phase1Nodes.includes(n.id)){
+        colors[i] = RED;
+        sizes[i] = 16;
+      }
+      if(phase2Targets.includes(n.id)){
+        colors[i] = lerpColor(n.color, RED, p);
+        sizes[i] = 8 + 8*p;
+      }
+    });
+
+    edges.forEach((e,i)=>{
+      const [a,b] = e;
+      if(
+        (phase1Nodes.includes(a) && phase2Targets.includes(b)) ||
+        (phase1Nodes.includes(b) && phase2Targets.includes(a))
+      ){
+        const c = lerpColor("#cccccc", RED, p);
+        const w = 0.5 + p;
+        Plotly.restyle("plot",
+          {"line.color":c,"line.width":w},
+          i + layerPlanes.length
+        );
+      }
+    });
+  }
+
+  // ---- STEP 3 ----
+  // 10–13s translator layer doubles again
+  if(t >= 10 && t < 13){
+    const p = (t-10)/3;
+    nodes.forEach((n,i)=>{
+      if(phase2Targets.includes(n.id)){
+        colors[i] = RED;
+        sizes[i] = 16;
+      }
+    });
+  }
+
+  // 13–18s lines to competence layer
+  if(t >= 13 && t < 18){
+    const p = (t-13)/5;
+
+    edges.forEach((e,i)=>{
+      const [a,b] = e;
+      if(
+        (phase2Targets.includes(a) && phase3Targets.includes(b)) ||
+        (phase2Targets.includes(b) && phase3Targets.includes(a))
+      ){
+        const c = lerpColor("#cccccc", RED, p);
+        const w = 0.5 + p;
+        Plotly.restyle("plot",
+          {"line.color":c,"line.width":w},
+          i + layerPlanes.length
+        );
+      }
+    });
+  }
+
+  // 18–21s competence nodes activate
+  if(t >= 18 && t < 21){
+    const p = (t-18)/3;
+    nodes.forEach((n,i)=>{
+      if(phase3Targets.includes(n.id)){
+        colors[i] = lerpColor(n.color, RED, p);
+        sizes[i] = 8 + 8*p;
+      }
+    });
+  }
+
+
+  // ---- STEP 4 (21–31s) ----
+  // 21–26s: lines from ALL activated nodes to Ethics turn red
+  if(t >= 21 && t < 26){
+    const p = (t-21)/5;
+
+    const ethicsNode = "Ethics";
+
+    const activeSources = [
+      "Technologies",
+      "Cultural and Linguistic Diversity",
+      "Translation",
+      "Translator",
+      "Education",
+      "Communication",
+      "Technological Competence",
+      "Competence in Culture and Language"
+    ];
+
+    edges.forEach((e,i)=>{
+      const [a,b] = e;
+
+      if(
+        (activeSources.includes(a) && b === ethicsNode) ||
+        (activeSources.includes(b) && a === ethicsNode)
+      ){
+        const c = lerpColor("#cccccc", RED, p);
+        const w = 0.5 + p;
+        Plotly.restyle("plot",
+          {"line.color":c,"line.width":w},
+          i + layerPlanes.length
+        );
+      }
+    });
+  }
+
+  // 26–31s: Ethics node turns red and grows x3
+  if(t >= 26 && t < 31){
+    const p = (t-26)/5;
+    nodes.forEach((n,i)=>{
+      if(n.id === "Ethics"){
+        colors[i] = lerpColor(n.color, RED, p);
+        sizes[i] = 8 + 16*p; // 8 → 24 (triple size)
+      }
+    });
+  }
+
+  lockedColors = colors;
+  lockedSizes = sizes;
+
+  Plotly.restyle("plot",{
+    "marker.color":[colors],
+    "marker.size":[sizes]
+  }, layerPlanes.length + edgeTraces.length);
+
+  if(t < 31){
+    requestAnimationFrame(runScenario);
+  }
+}
+
+// start after freeze (11s)
+setTimeout(startScenario, 12000);
+
+
+
+
+
+
+// ================= STEP 5 (RESUME CONTINUOUS ROTATION) =================
+
+// reuse original theta and phi so rotation continues from freeze position
+
+setTimeout(() => {
+
+  const resumeInterval = setInterval(() => {
+    theta += 0.01;
+    phi += 0.02;
+
+    const R = 0.8;
+    const r = 0.4;
+
+    const camera = {
+      eye: {
+        x: (R + r * Math.cos(phi)) * Math.cos(theta),
+        y: (R + r * Math.cos(phi)) * Math.sin(theta),
+        z: r * Math.sin(phi) + 0.5
+      }
+    };
+
+    Plotly.relayout("plot", { "scene.camera": camera });
+  }, 50);
+
+}, 43000);
+
+
+// ===== YEAR COUNTER 2025 → 2050 =====
+const startYear = 2025;
+const endYear = 2050;
+const duration = 43000; // from file open until ethics growth start (~26s)
+const yearEl = document.getElementById("yearCounter");
+
+let yearStart = null;
+
+function updateYear(ts){
+  if(!yearStart) yearStart = ts;
+  const t = ts - yearStart;
+
+  if(t < duration){
+    const p = t/duration;
+    const year = Math.floor(startYear + (endYear-startYear)*p);
+    yearEl.textContent = year;
+    requestAnimationFrame(updateYear);
+  } else {
+    yearEl.textContent = endYear;
+  }
+}
+requestAnimationFrame(updateYear);
+
+</script>
+</body>
+</html>
